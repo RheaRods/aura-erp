@@ -1,24 +1,24 @@
 /**
  * src/lib/procurement/AuthContext.tsx
  *
- * Matches your 001_schema.sql: `user_profiles` table (id = auth.users.id,
- * role: 'buyer' | 'manager' | 'admin'), and the `current_user_role()` RPC
- * you already defined — this file doesn't use that RPC directly (it reads
- * the row instead, since we need full_name too), but it's consistent with it.
+ * Auth state for the Procurement module. Reads the signed-in user's row
+ * from `user_profiles` (id = auth.users.id, role: buyer | manager | admin)
+ * and exposes it as `profile`, which the Procurement tabs expect.
  *
- * ONE REMAINING ASSUMPTION: Supabase client is exported as `supabase` from
- * "@/lib/supabaseClient". If aiQueries.ts imports it from a different path,
- * grep for "createClient" in src/lib and fix the import below to match.
+ * IMPORTANT: this file must be named AuthContext.tsx (not .ts) because it
+ * contains JSX.
  */
-import React, { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseClient";
+import type { UserProfile } from "@/lib/procurement/types";
 
 export type UserRole = "buyer" | "manager" | "admin";
 
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
+  profile: UserProfile | null;
   role: UserRole | null;
   loading: boolean;
   isAuthenticated: boolean;
@@ -26,39 +26,43 @@ interface AuthContextValue {
   hasRole: (...roles: UserRole[]) => boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
-  /** re-fetch role from `profiles` — call after an admin changes a user's role */
+  /** re-fetch the profile — call after an admin changes a user's role */
   refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-async function fetchRole(userId: string): Promise<UserRole | null> {
+async function fetchProfile(userId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from("user_profiles")
-    .select("role")
+    .select("*")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    console.error("[AuthContext] failed to load role for user", userId, error);
+  if (error) {
+    console.error("[AuthContext] failed to load profile for user", userId, error);
     return null;
   }
-  return data.role as UserRole;
+  if (!data) {
+    console.warn("[AuthContext] no user_profiles row for user", userId);
+    return null;
+  }
+  return data as UserProfile;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   async function hydrate(nextSession: Session | null) {
     setSession(nextSession);
     setUser(nextSession?.user ?? null);
     if (nextSession?.user) {
-      setRole(await fetchRole(nextSession.user.id));
+      setProfile(await fetchProfile(nextSession.user.id));
     } else {
-      setRole(null);
+      setProfile(null);
     }
   }
 
@@ -67,7 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      hydrate(data.session).finally(() => setLoading(false));
+      hydrate(data.session).finally(() => {
+        if (mounted) setLoading(false);
+      });
     });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
@@ -78,12 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       listener.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function signIn(email: string, password: string) {
-    setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
     return { error: error?.message ?? null };
   }
 
@@ -92,8 +97,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function refreshProfile() {
-    if (user) setRole(await fetchRole(user.id));
+    if (user) setProfile(await fetchProfile(user.id));
   }
+
+  const role: UserRole | null = profile?.role ?? null;
 
   function hasRole(...roles: UserRole[]) {
     return role !== null && roles.includes(role);
@@ -102,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     user,
     session,
+    profile,
     role,
     loading,
     isAuthenticated: !!user,

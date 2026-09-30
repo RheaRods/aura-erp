@@ -1,0 +1,1 @@
+export { supabase } from './procurement/supabaseClient';
