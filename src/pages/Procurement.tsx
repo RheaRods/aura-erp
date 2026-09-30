@@ -10,6 +10,7 @@ import {
   Truck,
   ChevronRight,
   TrendingUp,
+  LayoutGrid,
 } from 'lucide-react';
 import { AuthProvider, useAuth } from '@/lib/procurement/AuthContext';
 import {
@@ -34,11 +35,14 @@ import VendorsTab from '@/components/procurement/VendorsTab';
 import OrdersTab from '@/components/procurement/OrdersTab';
 import ReceiptsTab from '@/components/procurement/ReceiptsTab';
 import AIEvaluationTab from '@/components/procurement/AIEvaluationTab';
+import ErrorBoundary from '@/components/procurement/ErrorBoundary';
+import CommandCenter from '@/components/procurement/CommandCenter';
 
-type Section = 'overview' | 'requests' | 'vendors' | 'ai' | 'orders' | 'receipts';
+type Section = 'overview' | 'command' | 'requests' | 'vendors' | 'ai' | 'orders' | 'receipts';
 
 const SECTIONS: { id: Section; label: string; icon: typeof FileText }[] = [
   { id: 'overview', label: 'Overview', icon: Activity },
+  { id: 'command', label: 'Command Center', icon: LayoutGrid },
   { id: 'requests', label: 'Requests', icon: FileText },
   { id: 'vendors', label: 'Vendors', icon: Users },
   { id: 'ai', label: 'AI Evaluation', icon: Sparkles },
@@ -309,6 +313,18 @@ function ProcurementContent() {
                 )}
               </div>
             </div>
+          )}
+
+          {section === 'command' && (
+            <ErrorBoundary name="Command Center">
+              <CommandCenter
+                requests={requests}
+                vendors={vendors}
+                orders={orders}
+                inventory={inventory}
+                onChanged={loadAll}
+              />
+            </ErrorBoundary>
           )}
 
           {/* ===================== OTHER SECTIONS ===================== */}

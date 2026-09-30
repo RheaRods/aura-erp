@@ -130,6 +130,7 @@ export interface InventoryItem {
   product_name: string;
   quantity_on_hand: number;
   location: string | null;
+  reorder_point: number;
   last_receipt_id: string | null;
   updated_at: string;
 }
